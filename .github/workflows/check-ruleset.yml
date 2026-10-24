@@ -58,10 +58,12 @@ jobs:
             git -C checkout push origin "refs/tags/$create_tag"
 
           attempt_denied update \
+            gh api \
             "repos/$REPOSITORY/git/refs/tags/$PROTECTED_TAG" \
             --method PATCH -f "sha=$ALTERNATE_COMMIT" -F force=true
 
           attempt_denied delete \
+            gh api \
             "repos/$REPOSITORY/git/refs/tags/$PROTECTED_TAG" \
             --method DELETE
 
