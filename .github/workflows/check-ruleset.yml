@@ -1,0 +1,69 @@
+name: Check tag ruleset
+
+on:
+  workflow_dispatch:
+    inputs:
+      historical_commit:
+        description: Commit before this workflow existed
+        required: true
+        type: string
+      alternate_commit:
+        description: Different commit for the retarget probe
+        required: true
+        type: string
+      protected_tag:
+        description: Existing temporary protected tag to update and delete
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  probes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Try all three protected operations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          HISTORICAL_COMMIT: ${{ inputs.historical_commit }}
+          ALTERNATE_COMMIT: ${{ inputs.alternate_commit }}
+          PROTECTED_TAG: ${{ inputs.protected_tag }}
+        run: |
+          set -euo pipefail
+
+          attempt_denied() {
+            name="$1"
+            shift
+            set +e
+            response="$(gh api "$@" 2>&1)"
+            status=$?
+            set -e
+            printf '%s exit=%s response=%s\n' "$name" "$status" "$response" | tee -a "$GITHUB_STEP_SUMMARY"
+            if [ "$status" -eq 0 ]; then
+              echo "$name unexpectedly succeeded" >&2
+              exit 1
+            fi
+          }
+
+          create_tag="v-preauthorize-$RUN_ID"
+          attempt_denied create \
+            "repos/$REPOSITORY/git/refs" \
+            --method POST -f "ref=refs/tags/$create_tag" -f "sha=$HISTORICAL_COMMIT"
+
+          attempt_denied update \
+            "repos/$REPOSITORY/git/refs/tags/$PROTECTED_TAG" \
+            --method PATCH -f "sha=$ALTERNATE_COMMIT" -F force=true
+
+          attempt_denied delete \
+            "repos/$REPOSITORY/git/refs/tags/$PROTECTED_TAG" \
+            --method DELETE
+
+          if gh api "repos/$REPOSITORY/git/ref/tags/$create_tag" >/dev/null 2>&1; then
+            echo 'the denied creation left a ref behind' >&2
+            exit 1
+          fi
+          gh api "repos/$REPOSITORY/git/ref/tags/$PROTECTED_TAG" \
+            --jq '.object.sha' | grep -Fx "$HISTORICAL_COMMIT"
