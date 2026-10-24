@@ -15,6 +15,10 @@ on:
         description: Existing temporary protected tag to update and delete
         required: true
         type: string
+      protected_data_tag:
+        description: Existing temporary protected data tag to update and delete
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -31,6 +35,7 @@ jobs:
           HISTORICAL_COMMIT: ${{ inputs.historical_commit }}
           ALTERNATE_COMMIT: ${{ inputs.alternate_commit }}
           PROTECTED_TAG: ${{ inputs.protected_tag }}
+          PROTECTED_DATA_TAG: ${{ inputs.protected_data_tag }}
         run: |
           set -euo pipefail
           gh auth setup-git
@@ -57,9 +62,19 @@ jobs:
           attempt_denied create \
             git -C checkout push origin "refs/tags/$create_tag"
 
+          create_data_tag="data-v-preauthorize-$RUN_ID"
+          git -C checkout tag -a "$create_data_tag" "$HISTORICAL_COMMIT" -m "ruleset probe"
+          attempt_denied create-data \
+            git -C checkout push origin "refs/tags/$create_data_tag"
+
           attempt_denied update \
             gh api \
             "repos/$REPOSITORY/git/refs/tags/$PROTECTED_TAG" \
+            --method PATCH -f "sha=$ALTERNATE_COMMIT" -F force=true
+
+          attempt_denied update-data \
+            gh api \
+            "repos/$REPOSITORY/git/refs/tags/$PROTECTED_DATA_TAG" \
             --method PATCH -f "sha=$ALTERNATE_COMMIT" -F force=true
 
           attempt_denied delete \
@@ -67,9 +82,20 @@ jobs:
             "repos/$REPOSITORY/git/refs/tags/$PROTECTED_TAG" \
             --method DELETE
 
+          attempt_denied delete-data \
+            gh api \
+            "repos/$REPOSITORY/git/refs/tags/$PROTECTED_DATA_TAG" \
+            --method DELETE
+
           if gh api "repos/$REPOSITORY/git/ref/tags/$create_tag" >/dev/null 2>&1; then
             echo 'the denied creation left a ref behind' >&2
             exit 1
           fi
+          if gh api "repos/$REPOSITORY/git/ref/tags/$create_data_tag" >/dev/null 2>&1; then
+            echo 'the denied data-tag creation left a ref behind' >&2
+            exit 1
+          fi
           gh api "repos/$REPOSITORY/git/ref/tags/$PROTECTED_TAG" \
+            --jq '.object.sha' | grep -Fx "$HISTORICAL_COMMIT"
+          gh api "repos/$REPOSITORY/git/ref/tags/$PROTECTED_DATA_TAG" \
             --jq '.object.sha' | grep -Fx "$HISTORICAL_COMMIT"
