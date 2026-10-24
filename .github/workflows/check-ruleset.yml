@@ -33,12 +33,16 @@ jobs:
           PROTECTED_TAG: ${{ inputs.protected_tag }}
         run: |
           set -euo pipefail
+          gh auth setup-git
+          gh repo clone "$REPOSITORY" checkout
+          git -C checkout config user.name "ruleset probe"
+          git -C checkout config user.email "ruleset-probe@example.invalid"
 
           attempt_denied() {
             name="$1"
             shift
             set +e
-            response="$(gh api "$@" 2>&1)"
+            response="$("$@" 2>&1)"
             status=$?
             set -e
             printf '%s exit=%s response=%s\n' "$name" "$status" "$response" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -49,9 +53,9 @@ jobs:
           }
 
           create_tag="v-preauthorize-$RUN_ID"
+          git -C checkout tag -a "$create_tag" "$HISTORICAL_COMMIT" -m "ruleset probe"
           attempt_denied create \
-            "repos/$REPOSITORY/git/refs" \
-            --method POST -f "ref=refs/tags/$create_tag" -f "sha=$HISTORICAL_COMMIT"
+            git -C checkout push origin "refs/tags/$create_tag"
 
           attempt_denied update \
             "repos/$REPOSITORY/git/refs/tags/$PROTECTED_TAG" \
