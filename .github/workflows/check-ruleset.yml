@@ -67,15 +67,13 @@ jobs:
           attempt_denied create-data \
             git -C checkout push origin "refs/tags/$create_data_tag"
 
+          git -C checkout tag -f "$PROTECTED_TAG" "$ALTERNATE_COMMIT"
           attempt_denied update \
-            gh api \
-            "repos/$REPOSITORY/git/refs/tags/$PROTECTED_TAG" \
-            --method PATCH -f "sha=$ALTERNATE_COMMIT" -F force=true
+            git -C checkout push --force origin "refs/tags/$PROTECTED_TAG"
 
+          git -C checkout tag -f "$PROTECTED_DATA_TAG" "$ALTERNATE_COMMIT"
           attempt_denied update-data \
-            gh api \
-            "repos/$REPOSITORY/git/refs/tags/$PROTECTED_DATA_TAG" \
-            --method PATCH -f "sha=$ALTERNATE_COMMIT" -F force=true
+            git -C checkout push --force origin "refs/tags/$PROTECTED_DATA_TAG"
 
           attempt_denied delete \
             gh api \
